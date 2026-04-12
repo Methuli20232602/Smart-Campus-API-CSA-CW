@@ -4,6 +4,7 @@ import com.smartcampus.models.Room;
 import com.smartcampus.repository.DataStore;
 
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.DELETE;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
@@ -88,5 +89,36 @@ public class SensorRoomResource {
         }
         
         return Response.ok(room).build();
+    }
+
+    /**
+     * DELETE /api/v1/rooms/{roomId}
+     * Deletes a specific room if and only if it has no active sensors assigned to it.
+     * 
+     * @param roomId The room ID to delete
+     * @return 204 No Content on success, 404 Not Found, or 409 Conflict if occupied
+     */
+    @DELETE
+    @Path("/{roomId}")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response deleteRoom(@PathParam("roomId") String roomId) {
+        Room room = dataStore.getRooms().get(roomId);
+        
+        if (room == null) {
+            return Response.status(Response.Status.NOT_FOUND)
+                           .entity("Room with ID " + roomId + " not found")
+                           .build();
+        }
+        
+        // Business Logic Constraint: Cannot delete if it still has sensors assigned to it.
+        // Returning HTTP 409 Conflict prevents data orphans.
+        if (room.getSensorIds() != null && !room.getSensorIds().isEmpty()) {
+            return Response.status(Response.Status.CONFLICT)
+                           .entity("Cannot delete room " + roomId + " because it is currently occupied by active hardware.")
+                           .build();
+        }
+        
+        dataStore.getRooms().remove(roomId);
+        return Response.noContent().build();
     }
 }
