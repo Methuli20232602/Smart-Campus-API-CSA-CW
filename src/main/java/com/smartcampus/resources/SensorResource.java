@@ -4,11 +4,16 @@ import com.smartcampus.models.Sensor;
 import com.smartcampus.repository.DataStore;
 
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.Produces;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Resource class for managing Sensors.
@@ -62,5 +67,31 @@ public class SensorResource {
         dataStore.getRooms().get(roomId).getSensorIds().add(newSensor.getId());
 
         return Response.status(Response.Status.CREATED).entity(newSensor).build();
+    }
+
+    /**
+     * GET /api/v1/sensors
+     * Retrieves sensors, supporting optional filtering by type constraint.
+     * Example: /api/v1/sensors?type=CO2
+     * 
+     * @param type Optional query parameter to filter the result set
+     * @return 200 OK with a JSON array of matching Sensor objects
+     */
+    @GET
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response getAllSensors(@QueryParam("type") String type) {
+        // Retrieve all existing sensors to a distinct array
+        List<Sensor> allSensors = new ArrayList<>(dataStore.getSensors().values());
+        
+        // If type is defined in the URL, filter the list down
+        if (type != null && !type.trim().isEmpty()) {
+            List<Sensor> filteredSensors = allSensors.stream()
+                .filter(sensor -> type.equalsIgnoreCase(sensor.getType()))
+                .collect(Collectors.toList());
+            return Response.ok(filteredSensors).build();
+        }
+        
+        // Return full collection if no filter parameter was requested
+        return Response.ok(allSensors).build();
     }
 }
