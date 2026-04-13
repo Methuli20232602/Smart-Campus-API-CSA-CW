@@ -53,3 +53,23 @@ If a client mistakenly sends the exact same `DELETE /api/v1/rooms/LIB-301` reque
 2. **The second (and any subsequent) request** processes the exact same URL. Because the room was already deleted, the `dataStore.getRooms().get(roomId)` check evaluates to `null`. The server gracefully aborts and returns an HTTP `404 Not Found`.
 
 Despite the HTTP Status code responding differently (204 vs 404), the absolute **server state** (the absence of the "LIB-301" room) remains identical after the first request and the hundredth request. Therefore, the `DELETE` operation perfectly preserves its idempotent nature.
+
+---
+
+## Part 3 Conceptual Report
+
+### 1. Payload Formatting and `@Consumes` Mismatches
+**Question:** We explicitly use the `@Consumes(MediaType.APPLICATION_JSON)` annotation on the POST method. Explain the technical consequences if a client attempts to send data in a different format, such as text/plain or application/xml. How does JAX-RS handle this mismatch?
+
+**Answer:**
+When a method is mapped with `@Consumes(MediaType.APPLICATION_JSON)`, it establishes a strict programmatic contract guaranteeing the endpoint will only process HTTP requests carrying the `Content-Type: application/json` header. 
+If a client poorly forms their request and attempts to send data in an entirely different format (such as `text/plain` or `application/xml`), the JAX-RS framework intervenes before the Java method is ever executed. Because no matching endpoint exists that explicitly consumes that specific mismatched media type, JAX-RS immediately intercepts and rejects the request, automatically returning a standard **HTTP 415 Unsupported Media Type** response. This acts as a robust, built-in defensive mechanism shielding the backend parsing logic from processing fundamentally incompatible data payloads.
+
+### 2. Filtering Architecture: `@QueryParam` vs `@PathParam`
+**Question:** You implemented this filtering using `@QueryParam`. Contrast this with an alternative design where the type is part of the URL path (e.g., /api/v1/sensors/type/CO2). Why is the query parameter approach generally considered superior for filtering and searching collections?
+
+**Answer:**
+Utilizing `@QueryParam` (e.g., `/api/v1/sensors?type=CO2`) is universally considered the superior architectural pattern for filtering REST collections compared to embedding the filter mathematically into the URI path itself (`/api/v1/sensors/type/CO2`).
+
+In a pure RESTful design context, the URI Path should be rigidly reserved to identify the exact target **Resource** or hierarchical address (e.g., retrieving a specific room or sensor). Query parameters, by contrast, act as dynamic modifiers or filters applied *against* that targeted collection. 
+Using query strings offers enormous flexibility. It empowers clients to intuitively stack multiple filters simultaneously (e.g., `?type=CO2&status=ACTIVE`) without forcing the server architect to artificially construct and map dozens of complex, deeply-nested URL pathways endpoint by endpoint. This elegantly minimizes backend controller bloat while maintaining a clean, deterministic endpoint URI namespace.
