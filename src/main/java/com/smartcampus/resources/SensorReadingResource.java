@@ -89,8 +89,12 @@ public class SensorReadingResource {
                  .computeIfAbsent(sensorId, k -> new CopyOnWriteArrayList<>())
                  .add(reading);
 
-        // Intentionally deferred: Day 15 will implement the parent sensor 'currentValue' update side-effect here.
-
+        // Programmatic Side Effect: Dynamically update the parent sensor to reflect this newest reading value.
+        // This ensures data consistency without needing database triggers.
+        com.smartcampus.models.Sensor parentSensor = dataStore.getSensors().get(sensorId);
+        if (parentSensor != null) {
+            parentSensor.setCurrentValue(reading.getValue());
+        }
         return Response.status(Response.Status.CREATED).entity(reading).build();
     }
 }

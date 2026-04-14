@@ -73,3 +73,19 @@ Utilizing `@QueryParam` (e.g., `/api/v1/sensors?type=CO2`) is universally consid
 
 In a pure RESTful design context, the URI Path should be rigidly reserved to identify the exact target **Resource** or hierarchical address (e.g., retrieving a specific room or sensor). Query parameters, by contrast, act as dynamic modifiers or filters applied *against* that targeted collection. 
 Using query strings offers enormous flexibility. It empowers clients to intuitively stack multiple filters simultaneously (e.g., `?type=CO2&status=ACTIVE`) without forcing the server architect to artificially construct and map dozens of complex, deeply-nested URL pathways endpoint by endpoint. This elegantly minimizes backend controller bloat while maintaining a clean, deterministic endpoint URI namespace.
+
+---
+
+## Part 4 Conceptual Report
+
+### 1. Architectural Benefits of Sub-Resource Locators
+**Question:** What are the architectural benefits of using the Sub-Resource Locator pattern for the `{sensorId}/readings` path, as opposed to implementing all reading-related GET and POST methods directly inside the parent SensorResource class?
+
+**Answer:**
+Implementing the **Sub-Resource Locator** pattern fundamentally enforces the Single Responsibility Principle (SRP) and rigorously prevents the development of massive, unmaintainable monolithic classes. 
+
+If all reading-related `GET` and `POST` endpoints were jammed directly inside the parent `SensorResource` class, that class's footprint would aggressively bloat. It would be forced to simultaneously juggle Sensor metadata operations AND the high-throughput, structurally different time-series operations for readings.
+
+By delegating the `/readings` URI branch down to a completely dedicated `SensorReadingResource`, we achieving a distinct separation of concerns. `SensorResource` exclusively handles Sensor lifecycle management, while `SensorReadingResource` is strictly tailored to appending and querying historical data logs.
+
+Furthermore, the sub-resource locator mechanism elegantly isolates the `{sensorId}` from the URI path just *once* and passes it dynamically into the sub-resource's constructor. This means the sub-resource's internal methods do not need to repetitively declare, extract, and trace `@PathParam("sensorId")` on every single endpoint they offer. This radically strips away boilerplate code, minimizes mapping vulnerabilities, and keeps the overall JAX-RS codebase cleanly modularized.
