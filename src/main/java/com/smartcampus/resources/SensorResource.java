@@ -7,6 +7,7 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
@@ -93,5 +94,18 @@ public class SensorResource {
         
         // Return full collection if no filter parameter was requested
         return Response.ok(allSensors).build();
+    }
+
+    /**
+     * Sub-Resource Locator Pattern for Sensor Readings.
+     * Delegates requests from /api/v1/sensors/{sensorId}/readings directly to the SensorReadingResource.
+     * Note the omission of any HTTP method annotations (like @GET).
+     * 
+     * @param sensorId The parent's target ID
+     * @return A scoped instance of SensorReadingResource to handle the sub-paths
+     */
+    @Path("/{sensorId}/readings")
+    public SensorReadingResource getSensorReadingResource(@PathParam("sensorId") String sensorId) {
+        return new SensorReadingResource(sensorId);
     }
 }
