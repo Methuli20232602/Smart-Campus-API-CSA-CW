@@ -1,5 +1,7 @@
 package com.smartcampus.resources;
 
+import com.smartcampus.exceptions.EntityConflictException;
+import com.smartcampus.exceptions.UnprocessableEntityException;
 import com.smartcampus.models.Sensor;
 import com.smartcampus.repository.DataStore;
 
@@ -46,18 +48,12 @@ public class SensorResource {
         // in the request body actually exists in the system.
         String roomId = newSensor.getRoomId();
         if (roomId == null || !dataStore.getRooms().containsKey(roomId)) {
-            // Returning 422 Unprocessable Entity as it is semantically more accurate for dependency validation.
-            // Note: We will transition this to a custom LinkedResourceNotFoundException mapper on Day 16.
-            return Response.status(422)
-                           .entity("Validation Failed: The Room with ID " + roomId + " does not exist.")
-                           .build();
+            throw new UnprocessableEntityException("Validation Failed: The Room with ID " + roomId + " does not exist.");
         }
 
         // Ensure we do not overwrite an existing sensor maliciously or accidentally
         if (dataStore.getSensors().containsKey(newSensor.getId())) {
-            return Response.status(Response.Status.CONFLICT)
-                           .entity("Sensor with ID " + newSensor.getId() + " already exists")
-                           .build();
+            throw new EntityConflictException("Sensor with ID " + newSensor.getId() + " already exists");
         }
         
         // Save the new sensor in the DataStore

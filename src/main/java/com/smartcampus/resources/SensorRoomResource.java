@@ -1,5 +1,6 @@
 package com.smartcampus.resources;
 
+import com.smartcampus.exceptions.EntityConflictException;
 import com.smartcampus.models.Room;
 import com.smartcampus.repository.DataStore;
 
@@ -111,11 +112,9 @@ public class SensorRoomResource {
         }
         
         // Business Logic Constraint: Cannot delete if it still has sensors assigned to it.
-        // Returning HTTP 409 Conflict prevents data orphans.
+        // Throwing EntityConflictException will be caught by EntityConflictExceptionMapper.
         if (room.getSensorIds() != null && !room.getSensorIds().isEmpty()) {
-            return Response.status(Response.Status.CONFLICT)
-                           .entity("Cannot delete room " + roomId + " because it is currently occupied by active hardware.")
-                           .build();
+            throw new EntityConflictException("Cannot delete room " + roomId + " because it is currently occupied by active hardware.");
         }
         
         dataStore.getRooms().remove(roomId);
