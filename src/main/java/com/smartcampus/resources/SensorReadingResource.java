@@ -1,5 +1,6 @@
 package com.smartcampus.resources;
 
+import com.smartcampus.exceptions.AccessForbiddenException;
 import com.smartcampus.repository.DataStore;
 
 import jakarta.ws.rs.GET;
@@ -93,6 +94,10 @@ public class SensorReadingResource {
         // This ensures data consistency without needing database triggers.
         com.smartcampus.models.Sensor parentSensor = dataStore.getSensors().get(sensorId);
         if (parentSensor != null) {
+            // Business Logic Constraint: Reject readings if the sensor is undergoing maintenance.
+            if ("MAINTENANCE".equalsIgnoreCase(parentSensor.getStatus())) {
+                throw new AccessForbiddenException("Action Forbidden: Sensor " + sensorId + " is currently in MAINTENANCE mode and cannot accept new telemetry.");
+            }
             parentSensor.setCurrentValue(reading.getValue());
         }
         return Response.status(Response.Status.CREATED).entity(reading).build();
