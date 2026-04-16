@@ -88,4 +88,46 @@ If all reading-related `GET` and `POST` endpoints were jammed directly inside th
 
 By delegating the `/readings` URI branch down to a completely dedicated `SensorReadingResource`, we achieving a distinct separation of concerns. `SensorResource` exclusively handles Sensor lifecycle management, while `SensorReadingResource` is strictly tailored to appending and querying historical data logs.
 
+
 Furthermore, the sub-resource locator mechanism elegantly isolates the `{sensorId}` from the URI path just *once* and passes it dynamically into the sub-resource's constructor. This means the sub-resource's internal methods do not need to repetitively declare, extract, and trace `@PathParam("sensorId")` on every single endpoint they offer. This radically strips away boilerplate code, minimizes mapping vulnerabilities, and keeps the overall JAX-RS codebase cleanly modularized.
+
+---
+
+## Part 5 Conceptual Report
+
+### 1. HTTP 422 (Unprocessable Entity) vs HTTP 404 (Not Found)
+**Question:** Explain the semantic difference between returning HTTP 422 (Unprocessable Entity) and HTTP 404 (Not Found) when a client attempts to register a sensor with a `roomId` that does not exist. Why is 422 the more appropriate choice?
+
+**Answer:**
+HTTP 404 (Not Found) semantically communicates that the **target URI itself** does not map to any resource on the server. If we returned 404 when a sensor registration fails due to a non-existent `roomId`, we would be falsely telling the client that the endpoint `/api/v1/sensors` does not exist—which is incorrect. The endpoint is perfectly valid and reachable.
+
+HTTP 422 (Unprocessable Entity) carries a fundamentally different meaning: the server successfully received and parsed the request body (the JSON was syntactically valid), but the **content within the payload failed semantic business validation**. In our case, the `roomId` field inside the JSON body references a room that does not exist in the `DataStore`. The request is structurally well-formed, but logically invalid.
+
+Using 422 is therefore the architecturally correct choice because it accurately distinguishes between "I cannot find the URL you are requesting" (404) and "I understood your request, but the data you provided violates a business rule" (422). This distinction is critical for client developers to programmatically differentiate between routing errors and validation errors, enabling them to display appropriate user-facing feedback.
+
+### 2. Security Risks of Exposing Raw Stack Traces
+**Question:** What are the security risks of allowing raw Java stack traces to be returned in API error responses? How does the `GlobalExceptionMapper` mitigate this?
+
+**Answer:**
+Allowing raw Java stack traces to leak into HTTP responses represents a severe **information disclosure vulnerability**. Stack traces expose critically sensitive implementation details including: the exact Java class names and package hierarchy, the precise line numbers where failures occur, the names and versions of third-party libraries in use, internal method signatures, and potentially even database connection strings or file system paths embedded in error messages.
+
+An attacker can exploit this information to map the internal architecture of the application, identify known vulnerabilities in specific library versions (CVE databases), and craft targeted injection or denial-of-service attacks with surgical precision.
+
+The `GlobalExceptionMapper` class in our implementation acts as a security-hardened safety net. By implementing `ExceptionMapper<Throwable>`, it intercepts **every** unhandled exception before the JAX-RS runtime can generate a default response. Instead of forwarding the raw stack trace to the client, it returns a sanitized, generic error message ("An unexpected internal server error occurred") while logging the full technical details server-side using `System.err`. This ensures that developers retain full diagnostic capability for debugging while the external API surface reveals absolutely nothing about the internal implementation to potential attackers.
+
+### 3. Architectural Advantages of JAX-RS Filters for Cross-Cutting Concerns
+**Question:** What are the advantages of using JAX-RS `ContainerRequestFilter` and `ContainerResponseFilter` to implement logging, as opposed to manually adding logging statements inside every resource method?
+
+**Answer:**
+Using JAX-RS filters for logging and observability enforces the **Separation of Concerns** principle and the **DRY (Don't Repeat Yourself)** principle simultaneously.
+
+If logging were implemented manually inside every resource method, we would face several severe problems:
+1. **Code Duplication:** Every single `@GET`, `@POST`, `@DELETE` method across `SensorRoomResource`, `SensorResource`, and `SensorReadingResource` would need identical boilerplate logging code copied into it. This creates a maintenance nightmare where a format change requires editing dozens of methods.
+2. **Fragility:** A developer adding a new endpoint might forget to include the logging code, creating blind spots in the observability pipeline.
+3. **Polluted Business Logic:** Resource methods would become cluttered with infrastructure code (timestamps, latency calculations), making the actual business logic harder to read and review.
+
+By contrast, implementing a single `LoggingFilter` class annotated with `@Provider` provides **automatic, global coverage** across every endpoint in the entire API. The filter intercepts requests and responses at the container level, completely outside the resource method lifecycle. This means:
+- **Zero modification** to existing resource classes is required.
+- **New endpoints** automatically inherit logging without any developer action.
+- **Latency tracking** is computed once in a single location using `ContainerRequestContext.setProperty()` to pass state between the request and response filter phases.
+- The filter can be **enabled or disabled** at the configuration level (in `Main.java` or `ResourceConfig`) without touching any business logic whatsoever.
