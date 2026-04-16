@@ -131,3 +131,142 @@ By contrast, implementing a single `LoggingFilter` class annotated with `@Provid
 - **New endpoints** automatically inherit logging without any developer action.
 - **Latency tracking** is computed once in a single location using `ContainerRequestContext.setProperty()` to pass state between the request and response filter phases.
 - The filter can be **enabled or disabled** at the configuration level (in `Main.java` or `ResourceConfig`) without touching any business logic whatsoever.
+
+---
+
+## Prerequisites
+
+- **Java 17** (or later) — [Download from Adoptium](https://adoptium.net/)
+- **Apache Maven 3.8+** — [Download from Maven](https://maven.apache.org/download.cgi)
+- No external database or application server is required. The embedded Grizzly HTTP server is bundled via Maven dependencies.
+
+## How to Build and Run
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/Methuli20232602/Smart-Campus-API-CSA-CW.git
+cd Smart-Campus-API-CSA-CW
+
+# 2. Compile the project
+mvn clean compile
+
+# 3. Run the API server
+mvn exec:java -Dexec.mainClass="com.smartcampus.Main"
+```
+
+Once started, the server will output:
+```
+=================================================
+   SMART CAMPUS JAX-RS API (Coursework v1.0)
+=================================================
+Server successfully started.
+Base URI: http://localhost:8080/
+```
+
+The API base path is: `http://localhost:8080/api/v1`
+
+Press **ENTER** in the terminal to gracefully shut down the server.
+
+---
+
+## Project Structure
+
+```
+src/main/java/com/smartcampus/
+├── Main.java                           # Server bootstrap (Grizzly + Jersey)
+├── config/
+│   └── SmartCampusApplication.java     # @ApplicationPath("/api/v1")
+├── models/
+│   ├── Room.java                       # Room POJO
+│   ├── Sensor.java                     # Sensor POJO
+│   └── SensorReading.java             # SensorReading POJO
+├── repository/
+│   └── DataStore.java                  # Thread-safe Singleton (ConcurrentHashMap)
+├── resources/
+│   ├── DiscoveryResource.java          # GET /api/v1 (root HATEOAS endpoint)
+│   ├── SensorRoomResource.java         # /api/v1/rooms (CRUD)
+│   ├── SensorResource.java            # /api/v1/sensors (registration + filtering)
+│   └── SensorReadingResource.java     # Sub-resource for /sensors/{id}/readings
+├── exceptions/
+│   ├── EntityConflictException.java           # 409 Conflict
+│   ├── EntityConflictExceptionMapper.java     # Maps 409
+│   ├── UnprocessableEntityException.java      # 422 Unprocessable Entity
+│   ├── UnprocessableEntityExceptionMapper.java# Maps 422
+│   ├── AccessForbiddenException.java          # 403 Forbidden
+│   ├── AccessForbiddenExceptionMapper.java    # Maps 403
+│   └── GlobalExceptionMapper.java             # Catch-all 500
+└── filters/
+    └── LoggingFilter.java              # Request/Response observability filter
+```
+
+---
+
+## API Endpoint Reference
+
+| Method | Endpoint | Description | Success | Error Codes |
+|:-------|:---------|:------------|:--------|:------------|
+| `GET` | `/api/v1` | API discovery and navigation links | 200 | — |
+| `GET` | `/api/v1/rooms` | List all rooms | 200 | — |
+| `POST` | `/api/v1/rooms` | Create a new room | 201 | 400, 409 |
+| `GET` | `/api/v1/rooms/{roomId}` | Get a specific room | 200 | 404 |
+| `DELETE` | `/api/v1/rooms/{roomId}` | Delete a room (must be empty) | 204 | 404, 409 |
+| `GET` | `/api/v1/sensors` | List all sensors (supports `?type=` filter) | 200 | — |
+| `POST` | `/api/v1/sensors` | Register a new sensor | 201 | 400, 409, 422 |
+| `GET` | `/api/v1/sensors/{sensorId}/readings` | Get readings for a sensor | 200 | 404 |
+| `POST` | `/api/v1/sensors/{sensorId}/readings` | Add a reading to a sensor | 201 | 403, 404 |
+
+---
+
+## Sample cURL Test Commands
+
+The following commands demonstrate the full API lifecycle. Run them in order after starting the server.
+
+### 1. Create a Room
+```bash
+curl -X POST http://localhost:8080/api/v1/rooms \
+  -H "Content-Type: application/json" \
+  -d '{"id": "LIB-301", "name": "Library Quiet Study", "capacity": 40}'
+```
+**Expected:** `201 Created` — returns the created Room JSON.
+
+### 2. Retrieve All Rooms
+```bash
+curl -X GET http://localhost:8080/api/v1/rooms
+```
+**Expected:** `200 OK` — returns a JSON array containing the room created above.
+
+### 3. Register a Sensor in the Room
+```bash
+curl -X POST http://localhost:8080/api/v1/sensors \
+  -H "Content-Type: application/json" \
+  -d '{"id": "TEMP-001", "type": "Temperature", "status": "ACTIVE", "currentValue": 0.0, "roomId": "LIB-301"}'
+```
+**Expected:** `201 Created` — returns the created Sensor JSON. The `roomId` is validated against existing rooms.
+
+### 4. Register a Sensor with a Non-Existent Room (422 Error)
+```bash
+curl -X POST http://localhost:8080/api/v1/sensors \
+  -H "Content-Type: application/json" \
+  -d '{"id": "CO2-999", "type": "CO2", "status": "ACTIVE", "currentValue": 0.0, "roomId": "FAKE-ROOM"}'
+```
+**Expected:** `422 Unprocessable Entity` — the `roomId` "FAKE-ROOM" does not exist.
+
+### 5. Retrieve Sensors Filtered by Type
+```bash
+curl -X GET "http://localhost:8080/api/v1/sensors?type=Temperature"
+```
+**Expected:** `200 OK` — returns only sensors with `type` matching "Temperature".
+
+### 6. Post a Sensor Reading (Sub-Resource)
+```bash
+curl -X POST http://localhost:8080/api/v1/sensors/TEMP-001/readings \
+  -H "Content-Type: application/json" \
+  -d '{"value": 22.5}'
+```
+**Expected:** `201 Created` — the reading is saved and the parent sensor's `currentValue` is updated to `22.5`. The `id` and `timestamp` are auto-generated if omitted.
+
+### 7. Delete an Occupied Room (409 Conflict)
+```bash
+curl -X DELETE http://localhost:8080/api/v1/rooms/LIB-301
+```
+**Expected:** `409 Conflict` — the room has sensor "TEMP-001" assigned; deletion is blocked by business logic.
